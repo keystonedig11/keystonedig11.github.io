@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTAclipz Uploader - connecting</title>
+<style>body{font-family:system-ui,Arial,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#111;background:#fff}</style>
+</head>
+<body>
+<h1>Connecting your TikTok account…</h1>
+<p id="msg">Handing the sign-in back to the GTAclipz Uploader on this computer.</p>
+<script>
+  // TikTok sends the user here after they allow the app; pass the one-time code to the uploader running on this PC.
+  const q = location.search;
+  if (q.includes("code=") || q.includes("error=")) {
+    location.replace("http://127.0.0.1:8765/callback" + q);
+  } else {
+    document.getElementById("msg").textContent = "Nothing to connect. Open the uploader to start.";
+  }
+</script>
+</body>
+</html>

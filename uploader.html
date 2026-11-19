@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTAclipz Uploader</title>
+<style>
+ :root{--fg:#111;--muted:#666;--line:#ddd;--bg:#fff;--card:#f7f7f8;--accent:#fe2c55}
+ *{box-sizing:border-box}
+ body{font-family:system-ui,Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 16px;color:var(--fg);background:var(--bg);line-height:1.5}
+ h1{margin:0 0 4px} .muted{color:var(--muted)}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0}
+ button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
+ button.secondary{background:#333}
+ button:disabled{opacity:.45;cursor:not-allowed}
+ select,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;font:inherit}
+ label{display:block;margin:10px 0 4px;font-weight:600}
+ .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+ .acct img{width:48px;height:48px;border-radius:50%}
+ #preview{max-width:180px;border-radius:8px;border:1px solid var(--line)}
+ .check{font-weight:400;display:flex;gap:8px;align-items:center;margin:6px 0}
+ #status{white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>GTAclipz Uploader</h1>
+<p class="muted">Our own tool for posting GTAclipz videos to our own TikTok account. It talks to the uploader running on this computer.</p>
+
+<div class="card" id="connect">
+  <h2>1. TikTok account</h2>
+  <div id="acct" class="row acct muted">Checking…</div>
+  <p><button id="login">Connect TikTok account</button></p>
+</div>
+
+<div class="card">
+  <h2>2. Video</h2>
+  <label for="video">Video</label>
+  <select id="video"></select>
+  <div class="row" style="margin-top:10px"><img id="preview" alt="Video cover"></div>
+  <label for="caption">Caption</label>
+  <textarea id="caption" rows="5" maxlength="2200"></textarea>
+</div>
+
+<div class="card">
+  <h2>3. Post settings</h2>
+  <p class="muted" id="poster">Posting to: —</p>
+  <label for="privacy">Who can view this video</label>
+  <select id="privacy"><option value="">Choose who can see it…</option></select>
+  <label>Allow users to</label>
+  <div class="check"><input type="checkbox" id="c_comment"><span>Comment</span></div>
+  <div class="check"><input type="checkbox" id="c_duet"><span>Duet</span></div>
+  <div class="check"><input type="checkbox" id="c_stitch"><span>Stitch</span></div>
+  <label>Content disclosure</label>
+  <div class="check"><input type="checkbox" id="c_brand"><span>This video promotes a brand, product or service</span></div>
+  <p class="muted">By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank">Music Usage Confirmation</a>.</p>
+  <div class="row">
+    <button id="post">Post to TikTok</button>
+    <button id="draft" class="secondary">Send to TikTok inbox as draft</button>
+  </div>
+</div>
+
+<div class="card"><h2>Status</h2><div id="status" class="muted">Ready.</div></div>
+
+<script>
+const API = "http://127.0.0.1:8765";
+const $ = id => document.getElementById(id);
+let creator = null;
+
+function status(t){ $("status").textContent = t; }
+async function api(path, opts){
+  const r = await fetch(API + path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+  return j;
+}
+
+async function loadAccount(){
+  try {
+    const me = await api("/api/me");
+    if (!me.connected){ $("acct").textContent = "Not connected."; return; }
+    $("acct").innerHTML = "";
+    const img = document.createElement("img"); img.src = me.avatar_url || ""; img.alt = "";
+    const span = document.createElement("span"); span.textContent = "Connected as " + me.display_name + (me.username ? " (@" + me.username + ")" : "");
+    $("acct").append(img, span);
+    creator = me.creator || null;
+    if (creator){
+      $("poster").textContent = "Posting to: " + creator.creator_nickname + (creator.creator_username ? " (@" + creator.creator_username + ")" : "");
+      const sel = $("privacy");
+      sel.length = 1;
+      for (const p of creator.privacy_level_options || []){
+        const o = document.createElement("option"); o.value = p;
+        o.textContent = {PUBLIC_TO_EVERYONE:"Everyone", MUTUAL_FOLLOW_FRIENDS:"Friends", FOLLOWER_OF_CREATOR:"Followers", SELF_ONLY:"Only me"}[p] || p;
+        sel.append(o);
+      }
+      $("c_comment").disabled = !!creator.comment_disabled;
+      $("c_duet").disabled = !!creator.duet_disabled;
+      $("c_stitch").disabled = !!creator.stitch_disabled;
+    }
+  } catch (e) {
+    $("acct").textContent = "The uploader on this computer isn't running (" + e.message + ").";
+  }
+}
+
+async function loadVideos(){
+  try {
+    const v = await api("/api/videos");
+    const sel = $("video"); sel.length = 0;
+    for (const x of v.videos){ const o = document.createElement("option"); o.value = x.stem; o.textContent = x.hook || x.stem; o.dataset.caption = x.caption; sel.append(o); }
+    pick();
+  } catch (e) { status("Couldn't list videos: " + e.message); }
+}
+
+async function pick(){
+  const o = $("video").selectedOptions[0];
+  if (!o) return;
+  $("caption").value = o.dataset.caption || "";
+  try {
+    const r = await fetch(API + "/cover/" + encodeURIComponent(o.value));
+    $("preview").src = URL.createObjectURL(await r.blob());
+  } catch (e) { $("preview").removeAttribute("src"); }
+}
+
+async function send(mode){
+  const stem = $("video").value;
+  if (!stem) return status("Pick a video first.");
+  if (mode === "post" && !$("privacy").value) return status("Choose who can view this video first.");
+  $("post").disabled = $("draft").disabled = true;
+  status(mode === "post" ? "Uploading and posting…" : "Uploading to your TikTok inbox…");
+  try {
+    const body = {stem, mode, caption: $("caption").value, privacy_level: $("privacy").value,
+      allow_comment: $("c_comment").checked, allow_duet: $("c_duet").checked, allow_stitch: $("c_stitch").checked,
+      brand_content: $("c_brand").checked};
+    const r = await api("/api/send", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    status(r.message);
+  } catch (e) { status("Failed: " + e.message); }
+  $("post").disabled = $("draft").disabled = false;
+}
+
+$("login").onclick = () => { location.href = API + "/login"; };
+$("video").onchange = pick;
+$("post").onclick = () => send("post");
+$("draft").onclick = () => send("draft");
+loadAccount(); loadVideos();
+</script>
+</body>
+</html>
